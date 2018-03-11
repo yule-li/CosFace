@@ -1,0 +1,1 @@
+This project is aimmed at implementing the CosFace described by the paper [**CosFace: Large Margin Cosine Loss for Deep Face Recognitioni**]. The code can be trained on CASIA-Webface and the best accuracy LFW is 98.6%.
