@@ -43,7 +43,7 @@ from tensorflow.python.training import training
 import random
 import re
 from tensorflow.python.platform import gfile
-#import pylab as plt
+
 def py_func(func, inp, Tout, stateful = True, name=None, grad_func=None):
     rand_name = 'PyFuncGrad' + str(np.random.randint(0,1E+8))
     tf.RegisterGradient(rand_name)(grad_func)
@@ -78,12 +78,15 @@ def coco_func(xw,y,m, name=None):
         coco_out = py_func(coco_forward,[xw,y,m],tf.float32,name=name,grad_func=coco_backward)
         return coco_out
 
-def coco_loss(x, y,  num_cls, reuse=False, alpha=0.25, scale=64,name = 'coco'):
+def cos_loss(x, y,  num_cls, reuse=False, alpha=0.25, scale=64,name = 'cos_loss'):
     '''
-    x: B x D - data
-    y: B x 1 - label
-    l: 1 - lambda 
+    x: B x D - features
+    y: B x 1 - labels
+    num_cls: 1 - total class number
+    alpah: 1 - margin
+    scale: 1 - scaling paramter
     '''
+    # define the classifier weights
     xs = x.get_shape()
     with tf.variable_scope('centers_var',reuse=reuse) as center_scope:
         w = tf.get_variable("centers", [xs[1], num_cls], dtype=tf.float32, 
@@ -95,22 +98,17 @@ def coco_loss(x, y,  num_cls, reuse=False, alpha=0.25, scale=64,name = 'coco'):
     #(D,C)
     w_feat_norm = tf.nn.l2_normalize(w,0,1e-10)
     
-    
+    # get the scores after normalization 
     #(N,C)
-    xw = tf.matmul(x_feat_norm, w_feat_norm)  
+    xw_norm = tf.matmul(x_feat_norm, w_feat_norm)  
     #value = tf.identity(xw)
-    value = coco_func(xw,y,alpha) * scale
+    #substract the marigin and scale it
+    value = coco_func(xw_norm,y,alpha) * scale
+    
+    # compute the loss as softmax loss
+    cos_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=value))
 
-    loss_dist = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=value))
-    loss_th = 0
-    loss_total = loss_dist
-    loss = {}
-    loss['loss_dist'] = loss_dist
-    loss['loss_th'] = loss_th
-    loss['loss_total'] = loss_total
-    loss['cos_th'] = 0
-
-    return loss, w_feat_norm
+    return cos_loss 
 
 
 def softmax_loss(prelogits,labels,nrof_classes,weight_decay,reuse):
@@ -550,121 +548,6 @@ def get_dataset(paths, has_class_directories=True):
             dataset.append(ImageClass(class_name, image_paths))
   
     return dataset
-def key_in_line(line,keys):
-    in_line = False
-    for key in keys:
-        if key in line:
-            in_line = True
-            break
-    return in_line
-
-def dataset_from_list(list_file,root_dir,keys=['MSdata_final_256','MSData_second_label_256_clean','MultiPics'],error_classes=['48911'],drop_key='AsianStarCropBig_YES'):
-    '''
-    generate dataset from given lst
-    params:
-    - list_file: each line is [line_count,class_id,image_path]
-    - filter_set: just choice the line which contains key in keys
-    returns:
-    - dataset
-    '''
-    #import pdb
-    with open(list_file,'r') as wd:
-        lines = wd.read().strip().split('\n')
-        class_paths = {}
-        path_exp = os.path.expanduser(root_dir)
-        count = 0
-        for line in lines:
-            if count % 1000 == 0:
-                print('handing {}/{}'.format(count,len(lines)))
-            count += 1
-            line = line.strip()
-            if not key_in_line(line,keys):
-                continue
-            if drop_key is not None and drop_key in line:
-                print('drop line {}'.format(line))
-                continue
-            line = line.split()
-            if line[1] in error_classes:
-                print('error class {},{}'.format(line[1],line))
-                continue
-            if line[1] not in class_paths:
-                class_paths[line[1]] = []
-            image_path = os.path.join(path_exp,line[2])
-            assert os.path.exists(image_path),'file {} not exist'.format(image_path)
-            class_paths[line[1]].append(image_path)
-    dataset = []
-    keys = class_paths.keys()
-    keys.sort()
-    for key in keys:
-        dataset.append(ImageClass(key,class_paths[key]))
-    return dataset
-
-            #pdb.set_trace()
-    #return class_paths
-def dataset_from_list2(list_file,root_dir,error_classes=['48911','170967'],drop_key='AsianStarCropBig_YES'):
-    '''
-    generate dataset from given lst
-    params:
-    - list_file: each line is [line_count,class_id,image_path]
-    - filter_set: just choice the line which contains key in keys
-    returns:
-    - dataset
-    '''
-    #import pdb
-    #cache_file = 'cache/dataset_79w.pkl'
-    #cache_file = 'cache/dataset.pkl'
-    #cache_file = 'cache/dataset_ms.pkl'
-    cache_file = 'cache/dataset_webface.pkl'
-    if os.path.exists(cache_file):
-        print('load dataset from chcae: {}'.format(cache_file))
-        dataset = pickle.load(open(cache_file,'rb'))
-        dataset = dataset['dataset']
-        return dataset
-    with open(list_file,'r') as wd:
-        lines = wd.read().strip().split('\n')
-        class_paths = {}
-        t_start = time.time()
-        for line in lines:
-            line = line.strip()
-            line = line.split()
-            class_paths[line[1]] = []
-        print('init class paths comsume {}'.format(time.time()-t_start))
-        path_exp = os.path.expanduser(root_dir)
-        count = 0
-        for line in lines:
-            if count % 1000 == 0:
-                print('handing {}/{}'.format(count,len(lines)))
-            count += 1
-            #if count < 17808000:
-            #    continue
-            line = line.strip()
-            #if not key_in_line(line,keys):
-                #print('skip {}'.format(line))
-            #    continue
-            if drop_key is not None and drop_key in line:
-                print('drop line {}'.format(line))
-                continue
-            line = line.split()
-            if line[1] in error_classes:
-                print('error class {},{}'.format(line[1],line))
-                continue
-            #if line[1] not in class_paths:
-            #    class_paths[line[1]] = []
-            image_path = os.path.join(path_exp,line[2])
-            #assert os.path.exists(image_path),'file {} not exist'.format(image_path)
-            class_paths[line[1]].append(image_path)
-    dataset = []
-    keys = class_paths.keys()
-    keys.sort()
-    for key in keys:
-        dataset.append(ImageClass(key,class_paths[key]))
-    with open(cache_file,'wb') as wd:
-        pickle.dump({'dataset':dataset},wd)
-    return dataset
-
-            #pdb.set_trace()
-    #return class_paths
-
 
 
 def get_image_paths(facedir):

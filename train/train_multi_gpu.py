@@ -1,27 +1,3 @@
-"""Training a face recognizer with TensorFlow based on the FaceNet paper
-FaceNet: A Unified Embedding for Face Recognition and Clustering: http://arxiv.org/abs/1503.03832
-"""
-# MIT License
-# 
-# Copyright (c) 2016 David Sandberg
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -34,7 +10,6 @@ import time
 import sys
 sys.path.insert(0,'lib')
 sys.path.insert(0,'networks')
-#sys.path.insert(0,'slim-nets')
 import tensorflow as tf
 from tensorflow.python.client import timeline
 from tensorflow.contrib import slim
@@ -48,7 +23,6 @@ from tensorflow.contrib.slim.nets import resnet_v1, resnet_v2
 import argparse
 import utils
 import sphere_network as network
-#import densenet as densenet
 #import lfw
 import pdb
 #import cv2
@@ -87,7 +61,6 @@ def main(args):
     np.random.seed(seed=args.seed)
 
     train_set = utils.get_dataset(args.data_dir)
-    #train_set = facenet.dataset_from_list2(args.data_dir,'dataset/casia_maxpy_mtcnnpy_182',error_classes=[],drop_key='AsianStarCropBig_YES')
     nrof_classes = len(train_set)
     print('nrof_classes: ',nrof_classes)
     image_list, label_list = utils.get_image_paths_and_labels(train_set)
@@ -151,10 +124,6 @@ def main(args):
             image = tf.image.per_image_standardization(image)
         return image, label
 
-    #train_set = facenet.dataset_from_list(args.data_dir,'dataset/ms_mp',keys=['MultiPics'])
-    #train_set = facenet.dataset_from_list(args.data_dir,'dataset/ms_mp')
-    gpus = [0,1]
-    #gpus = [0]
     
     print('Model directory: %s' % model_dir)
     print('Log directory: %s' % log_dir)
@@ -205,7 +174,7 @@ def main(args):
         tower_losses = []
         tower_cross = []
         tower_dist = []
-        tower_th = []
+        tower_reg= []
         for i in range(args.num_gpus):
             with tf.device("/gpu:" + str(i)):
                 with tf.name_scope("tower_" + str(i)) as scope:
@@ -218,13 +187,14 @@ def main(args):
                         #prelogits, end_points = network.inference(batch_image_split[i], args.keep_probability, 
                         #    phase_train=phase_train_placeholder, bottleneck_layer_size=args.embedding_size, 
                         #    weight_decay=args.weight_decay, reuse=reuse)
-                        if args.network ==  'slim_sphere':
+                        if args.network ==  'sphere_network':
                             prelogits = network.infer(batch_image_split[i])
-                        elif args.network == 'densenet':
-                            with slim.arg_scope(densenet.densenet_arg_scope(args.weight_decay)):
-                                #prelogits, endpoints = densenet.densenet_small(batch_image_split[i],num_classes=args.embedding_size,is_training=True,reuse=reuse)
-                                prelogits, endpoints = densenet.densenet_small_middle(batch_image_split[i],num_classes=args.embedding_size,is_training=True,reuse=reuse)
+                        elif args.network == 'resnet_v2':
+                            with slim.arg_scope(resnet_v2.resnet_arg_scope(args.weight_decay)):
+                                prelogits, end_points = resnet_v2.resnet_v2_50(batch_image_split[i],is_training=True,
+                                        output_stride=16,num_classes=args.embedding_size,reuse=reuse)
                                 prelogits = tf.squeeze(prelogits,axis=[1,2])
+                        
 
                         #prelogits = slim.batch_norm(prelogits, is_training=True, decay=0.997,epsilon=1e-5,scale=True,updates_collections=tf.GraphKeys.UPDATE_OPS,reuse=reuse,scope='softmax_bn')
                         if args.loss_type == 'softmax':
@@ -237,38 +207,25 @@ def main(args):
                             tower_cross.append(cross_entropy_mean)
                             tower_th.append(0)
                             tower_losses.append(loss)
-                        elif args.loss_type == 'scatter' or args.loss_type == 'coco':
+                            tower_reg.append(regularization_losses)
+                        elif args.loss_type == 'cosface':
                             label_reshape = tf.reshape(batch_label_split[i],[single_batch_size])
                             label_reshape = tf.cast(label_reshape,tf.int64)
-                            if args.loss_type == 'scatter':
-                                scatter_loss, _ = utils.weight_scatter_speed(prelogits,label_reshape, len(train_set),reuse,weight=args.weight,scale=args.scale)
-                            else:
-                                scatter_loss, _ = utils.coco_loss(prelogits,label_reshape, len(train_set),reuse,alpha=args.alpha,scale=args.scale)
+                            coco_loss = utils.cos_loss(prelogits,label_reshape, len(train_set),reuse,alpha=args.alpha,scale=args.scale)
                             regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-                            loss = scatter_loss['loss_total'] + args.weight_decay*tf.add_n(regularization_losses)
-                            tower_dist.append(scatter_loss['loss_dist'])
-                            tower_cross.append(0)
-                            tower_th.append(scatter_loss['loss_th'])
+                            reg_loss  = args.weight_decay*tf.add_n(regularization_losses)
+                            loss = coco_loss + reg_loss
                             
                             tower_losses.append(loss)
+                            tower_reg.append(reg_loss)
 
                         #loss = tf.add_n([cross_entropy_mean] + regularization_losses, name='total_loss')
                         tf.get_variable_scope().reuse_variables()
         total_loss = tf.reduce_mean(tower_losses)
-        total_cross = tf.reduce_mean(tower_cross)
-        total_dist = tf.reduce_mean(tower_dist)
-        total_th = tf.reduce_mean(tower_th)
+        total_reg = tf.reduce_mean(tower_reg)
         losses = {}
         losses['total_loss'] = total_loss
-        losses['total_cross'] = total_cross
-        losses['total_dist'] = total_dist
-        losses['total_th'] = total_th
-        debug_info = {}
-        debug_info['logits'] = prelogits
-        #debug_info['end_points'] = end_points
-        debug_info['batch_image_split'] = batch_image_split
-        debug_info['batch_label_split'] = batch_label_split
-        #debug_info['endpoints'] = endpoints
+        losses['total_reg'] = total_reg
 
         grads = opt.compute_gradients(total_loss,tf.trainable_variables(),colocate_gradients_with_ops=True)
         apply_gradient_op = opt.apply_gradients(grads,global_step=global_step)
@@ -277,8 +234,6 @@ def main(args):
             train_op = tf.group(apply_gradient_op)
 
         save_vars = [var for var in tf.global_variables() if 'Adagrad' not in var.name and 'global_step' not in var.name]
-        check_nan = tf.add_check_numerics_ops()
-        debug_info['check_nan'] = check_nan
          
         #saver = tf.train.Saver(tf.trainable_variables(), max_to_keep=3)
         saver = tf.train.Saver(save_vars, max_to_keep=3)
@@ -317,7 +272,7 @@ def main(args):
                     debug_train(args, sess, train_set, epoch, image_batch_gather, enqueue_op,batch_size_placeholder, image_batch_split,image_paths_split,num_per_class_split,
                             image_paths_placeholder,image_paths_split_placeholder, labels_placeholder, labels_batch, num_per_class_placeholder,num_per_class_split_placeholder,len(gpus))
                 # Train for one epoch
-                train(args, sess, epoch, len(gpus),debug_info,
+                train(args, sess, epoch, 
                      learning_rate_placeholder, phase_train_placeholder, global_step, 
                      losses, train_op, summary_op, summary_writer, args.learning_rate_schedule_file)
 
@@ -327,52 +282,27 @@ def main(args):
                 # Evaluate on LFW
     return model_dir
 
-def train(args, sess, epoch, num_gpus, debug_info,
+def train(args, sess, epoch, 
           learning_rate_placeholder, phase_train_placeholder, global_step, 
           loss, train_op, summary_op, summary_writer, learning_rate_schedule_file):
     batch_number = 0
     
-    #run_options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-    #run_metadata = tf.RunMetadata()
     if args.learning_rate>0.0:
         lr = args.learning_rate
     else:
         lr = utils.get_learning_rate_from_file(learning_rate_schedule_file, epoch)
     while batch_number < args.epoch_size:
-        # Sample people randomly from the dataset
-        #image_paths, num_per_class = sample_people(dataset, args.people_per_batch, args.images_per_person)
         start_time = time.time()
-        #pdb.set_trace()
         
         print('Running forward pass on sampled images: ', end='')
         feed_dict = {learning_rate_placeholder: lr, phase_train_placeholder: True}
         start_time = time.time()
-        #triplet_err,total_err, _, step, emb, lab = sess.run([loss['triplet_loss'],loss['total_loss'], train_op, global_step, embeddings, labels_batch], feed_dict=feed_dict,options=run_options,run_metadata=run_metadata)
-        #triplet_err,total_err, _, step = sess.run([loss['triplet_loss'],loss['total_loss'], train_op, global_step ], feed_dict=feed_dict,options=run_options,run_metadata=run_metadata)
-        #if batch_number > 18:
-        #    pdb.set_trace()
-        #_,total_err, softmax_err,dist_err,th_err, _, step = sess.run([debug_info['check_nan'],loss['total_loss'], loss['total_cross'], loss['total_dist'], loss['total_th'], train_op, global_step ], feed_dict=feed_dict)
-        total_err, softmax_err,dist_err,th_err, _, step = sess.run([loss['total_loss'], loss['total_cross'], loss['total_dist'], loss['total_th'], train_op, global_step ], feed_dict=feed_dict)
+        total_err, reg_err, _, step = sess.run([loss['total_loss'], loss['total_reg'], train_op, global_step ], feed_dict=feed_dict)
         duration = time.time() - start_time
-        print('Epoch: [%d][%d/%d]\tTime %.3f\tTotal Loss %2.3f\tSoftmax Loss %2.3f, Dist Loss %2.3f, Th Loss %2.3f,  lr %2.5f' %
-                  (epoch, batch_number+1, args.epoch_size, duration, total_err, softmax_err, dist_err, th_err, lr))
-        # Add validation loss and accuracy to summary
-        summary = tf.Summary()
-        #pylint: disable=maybe-no-member
-        summary.value.add(tag='time/selection', simple_value=duration)
-        summary_writer.add_summary(summary, step)
-        #summary_writer.add_run_metadata(run_metadata,'step%d' %(batch_number+1))
+        print('Epoch: [%d][%d/%d]\tTime %.3f\tTotal Loss %2.3f\tReg Loss %2.3f, lr %2.5f' %
+                  (epoch, batch_number+1, args.epoch_size, duration, total_err, reg_err, lr))
 
-        #tf.contrib.tfprof.model_analyzer.print_model_analysis(
-        #        tf.get_default_graph(),
-        #        run_meta=run_metadata,
-        #        tfprof_options=tf.contrib.tfprof.model_analyzer.PRINT_ALL_TIMING_MEMORY)
-        
-        #tl = timeline.Timeline(run_metadata.step_stats)
-        #ctf = tl.generate_chrome_trace_format()
         batch_number += 1
-        #with open('prefetch_cpu_var_2_{}.json'.format(batch_number),'w') as f:
-        #    f.write(ctf)
     return step
  
 
