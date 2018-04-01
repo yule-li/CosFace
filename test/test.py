@@ -1,29 +1,3 @@
-"""Validate a face recognizer on the "Labeled Faces in the Wild" dataset (http://vis-www.cs.umass.edu/lfw/).
-Embeddings are calculated using the pairs from http://vis-www.cs.umass.edu/lfw/pairs.txt and the ROC curve
-is calculated and plotted. Both the model metagraph and the model parameters need to exist
-in the same directory, and the metagraph should have the extension '.meta'.
-"""
-# MIT License
-# 
-# Copyright (c) 2016 David Sandberg
-# 
-# Permission is hereby granted, free of charge, to any person obtaining a copy
-# of this software and associated documentation files (the "Software"), to deal
-# in the Software without restriction, including without limitation the rights
-# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-# copies of the Software, and to permit persons to whom the Software is
-# furnished to do so, subject to the following conditions:
-# 
-# The above copyright notice and this permission notice shall be included in all
-# copies or substantial portions of the Software.
-# 
-# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-# SOFTWARE.
 
 from __future__ import absolute_import
 from __future__ import division
@@ -82,21 +56,12 @@ def main(args):
                     #prelogits, end_points = resnet_v2_modify.resnet_v2_50(images_placeholder,is_training=phase_train_placeholder,num_classes=256)
                     #prelogits = slim.batch_norm(prelogits, is_training=phase_train_placeholder,epsilon=1e-5, scale=True,scope='softmax_bn')
                     prelogits = tf.squeeze(prelogits,[1,2],name='SpatialSqueeze')
-            elif args.network_type == 'inception_resnet_v1':
-                prelogits, _ = inception_resnet_v1.inference(images_placeholder,1.0,phase_train=phase_train_placeholder, bottleneck_layer_size=256, weight_decay=0.0)
-                pdb.set_trace()
-                if args.fc_bn:
-                    prelogits = slim.batch_norm(prelogits, is_training=phase_train_placeholder,epsilon=1e-5, scale=True,scope='softmax_bn')
+     
             elif args.network_type == 'sphere_network':
                 prelogits = network.infer(images_placeholder)
                 if args.fc_bn:
                     prelogits = slim.batch_norm(prelogits, is_training=phase_train_placeholder,epsilon=1e-5, scale=True,scope='softmax_bn')
-            elif args.network_type == 'densenet':
-                with slim.arg_scope(densenet.densenet_arg_scope(0.0001)):
-                    #prelogits, end_points = densenet.densenet_small(images_placeholder,is_training=phase_train_placeholder,num_classes=256)
-                    prelogits, end_points = densenet.densenet121(images_placeholder,is_training=phase_train_placeholder,num_classes=256)
-                    #prelogits, end_points = densenet.densenet_small_middle(images_placeholder,is_training=phase_train_placeholder,num_classes=256)
-                    prelogits = tf.squeeze(prelogits,[1,2],name='SpatialSqueeze')
+    
 
             
             #embeddings = tf.nn.l2_normalize(prelogits, 1, 1e-10, name='embeddings')
