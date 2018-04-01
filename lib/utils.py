@@ -37,7 +37,7 @@ import time
 import tensorflow.contrib.slim as slim
 import pickle
 from scipy import misc
-#from sklearn.model_selection import KFold
+from sklearn.model_selection import KFold
 from scipy import interpolate
 from tensorflow.python.training import training
 import random
@@ -399,23 +399,40 @@ def to_rgb(img):
     ret[:, :, 0] = ret[:, :, 1] = ret[:, :, 2] = img
     return ret
   
-def load_data(image_paths, do_random_crop, do_random_flip, image_size, do_prewhiten=True,src_size=None):
+
+def load_data(image_paths, do_random_crop, do_flip, image_height,image_width, do_prewhiten=True,src_size=None):
     nrof_samples = len(image_paths)
-    images = np.zeros((nrof_samples, image_size, image_size, 3))
+    images = np.zeros((nrof_samples, image_height, image_width, 3))
     for i in range(nrof_samples):
         img = misc.imread(image_paths[i])
         if src_size is not None:
-            img = misc.imresize(img,(src_size,src_size))
+            img = misc.imresize(img,(src_size[0],src_size[1]))
         if img.ndim == 2:
             img = to_rgb(img)
         if do_prewhiten:
             img = prewhiten(img)
-        img = crop(img, do_random_crop, image_size)
-        img = flip(img, do_random_flip)
+        #img = crop(img, do_random_crop, image_size)
+        #img = flip(img, do_random_flip)
+        if do_flip:
+            img = np.fliplr(img)
         images[i,:,:,:] = img
-        #plt.imshow(img)
-        #plt.show()
     return images
+
+def l2_normalize(x):
+    n,e = x.shape
+    mean = np.mean(x,axis=1)
+    mean = mean.reshape((n,1))
+    mean = np.repeat(mean,e,axis=1)
+    x -= mean
+    norm = np.linalg.norm(x,axis=1)
+    norm = norm.reshape((n,1))
+    norm = np.repeat(norm,e,axis=1)
+    y = np.multiply(x,1/norm)
+    return y
+
+
+
+
 
 def data_from_mx(inputs,image_size,do_resize=True,do_prewhiten=True):
     '''
