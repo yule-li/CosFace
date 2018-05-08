@@ -23,6 +23,8 @@ from tensorflow.contrib.slim.nets import resnet_v1, resnet_v2
 import argparse
 import utils
 import sphere_network as network
+import inception_resnet_v1 as inception_net
+import resface as resface
 #import lfw
 import pdb
 #import cv2
@@ -171,6 +173,10 @@ def main(args):
             opt = tf.train.AdagradOptimizer(learning_rate)
         elif args.optimizer == 'MOM':
             opt = tf.train.MomentumOptimizer(learning_rate,0.9)
+        elif args.optimizer == 'ADAM':
+            opt = tf.train.AdamOptimizer(learning_rate, beta1=0.9, beta2=0.999, epsilon=0.1)
+        else:
+            raise Exception("Not supported optimizer: {}".format(args.optimizer))
         tower_losses = []
         tower_cross = []
         tower_dist = []
@@ -189,31 +195,40 @@ def main(args):
                         #    weight_decay=args.weight_decay, reuse=reuse)
                         if args.network ==  'sphere_network':
                             prelogits = network.infer(batch_image_split[i])
+                        elif args.network == 'resface':
+                            prelogits, _ = resface.inference(batch_image_split[i],1.0,weight_decay=args.weight_decay,reuse=reuse)
+                        elif args.network == 'inception_net':
+                            prelogits, endpoints = inception_net.inference(batch_image_split[i],1,phase_train=True,bottleneck_layer_size=args.embedding_size,weight_decay=args.weight_decay,reuse=reuse)
+
                         elif args.network == 'resnet_v2':
                             with slim.arg_scope(resnet_v2.resnet_arg_scope(args.weight_decay)):
                                 prelogits, end_points = resnet_v2.resnet_v2_50(batch_image_split[i],is_training=True,
                                         output_stride=16,num_classes=args.embedding_size,reuse=reuse)
                                 prelogits = tf.squeeze(prelogits,axis=[1,2])
-                        
 
-                        #prelogits = slim.batch_norm(prelogits, is_training=True, decay=0.997,epsilon=1e-5,scale=True,updates_collections=tf.GraphKeys.UPDATE_OPS,reuse=reuse,scope='softmax_bn')
+                        else:
+                            raise Exception("Not supported network: {}".format(args.network))
+                        if args.fc_bn: 
+
+                            prelogits = slim.batch_norm(prelogits, is_training=True, decay=0.997,epsilon=1e-5,scale=True,updates_collections=tf.GraphKeys.UPDATE_OPS,reuse=reuse,scope='softmax_bn')
                         if args.loss_type == 'softmax':
                             cross_entropy_mean = utils.softmax_loss(prelogits,batch_label_split[i], len(train_set),args.weight_decay,reuse)
                             regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
                             tower_cross.append(cross_entropy_mean)
                             #loss = cross_entropy_mean + args.weight_decay*tf.add_n(regularization_losses)
                             loss = cross_entropy_mean + tf.add_n(regularization_losses)
-                            tower_dist.append(0)
-                            tower_cross.append(cross_entropy_mean)
-                            tower_th.append(0)
+                            #tower_dist.append(0)
+                            #tower_cross.append(cross_entropy_mean)
+                            #tower_th.append(0)
                             tower_losses.append(loss)
                             tower_reg.append(regularization_losses)
                         elif args.loss_type == 'cosface':
                             label_reshape = tf.reshape(batch_label_split[i],[single_batch_size])
                             label_reshape = tf.cast(label_reshape,tf.int64)
                             coco_loss = utils.cos_loss(prelogits,label_reshape, len(train_set),reuse,alpha=args.alpha,scale=args.scale)
-                            regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-                            reg_loss  = args.weight_decay*tf.add_n(regularization_losses)
+                            #regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+                            #reg_loss  = args.weight_decay*tf.add_n(regularization_losses)
+                            reg_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
                             loss = coco_loss + reg_loss
                             
                             tower_losses.append(loss)
@@ -279,7 +294,6 @@ def main(args):
                 # Save variables and the metagraph if it doesn't exist already
                 save_variables_and_metagraph(sess, saver, summary_writer, model_dir, subdir, step)
 
-                # Evaluate on LFW
     return model_dir
 
 def train(args, sess, epoch, 
@@ -396,6 +410,8 @@ def parse_arguments(argv):
          'If the size of the images in the data directory is equal to image_size no cropping is performed', action='store_true')
     parser.add_argument('--random_flip', 
         help='Performs random horizontal flipping of training images.', action='store_true')
+    parser.add_argument('--fc_bn', 
+        help='Wheater use bn after fc.', action='store_true')
     parser.add_argument('--keep_probability', type=float,
         help='Keep probability of dropout for the fully connected layer(s).', default=1.0)
     parser.add_argument('--weight_decay', type=float,
