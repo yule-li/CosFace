@@ -101,9 +101,16 @@ def cos_loss(x, y,  num_cls, reuse=False, alpha=0.25, scale=64,name = 'cos_loss'
     # get the scores after normalization 
     #(N,C)
     xw_norm = tf.matmul(x_feat_norm, w_feat_norm)  
+    #implemented by py_func
     #value = tf.identity(xw)
     #substract the marigin and scale it
-    value = coco_func(xw_norm,y,alpha) * scale
+    #value = coco_func(xw_norm,y,alpha) * scale
+
+    #implemented by tf api
+    margin_xw_norm = xw_norm - alpha
+    label_onehot = tf.one_hot(y,num_cls)
+    value = scale*tf.where(tf.equal(label_onehot,1), margin_xw_norm, xw_norm)
+
     
     # compute the loss as softmax loss
     cos_loss = tf.reduce_mean(tf.nn.sparse_softmax_cross_entropy_with_logits(labels=y, logits=value))
