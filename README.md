@@ -1,5 +1,7 @@
-
-
+## Recent Update
+```2018.07.04```: I achieved a better accuracy(99.2%) on LFW. I record what I done as bellow:
+- Align webface and lfw dataset to ```112x112``` using [insightface align method](https://github.com/deepinsight/insightface/blob/master/src/align/align_lfw.py)
+## CosFace
 This project is aimmed at implementing the CosFace described by the paper [**CosFace: Large Margin Cosine Loss for Deep Face Recognition**](https://arxiv.org/pdf/1801.09414.pdf). The code can be trained on [CASIA-Webface](http://www.cbsr.ia.ac.cn/english/CASIA-WebFace-Database.html) and the best accuracy [LFW](http://vis-www.cs.umass.edu/lfw/) is 98.6%. The result is lower than reported by paper(99.33%), which may be caused by sphere network implemented in tensorflow. I train the sphere network implemented in tensorflow using the softmax loss and just obtain the accuracy 95.6%, which is more lower than caffe version(97.88%).
 
 ## Preprocessing
