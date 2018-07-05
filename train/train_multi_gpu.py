@@ -62,10 +62,12 @@ def main(args):
 
     np.random.seed(seed=args.seed)
 
-    train_set = utils.get_dataset(args.data_dir)
+    #train_set = utils.get_dataset(args.data_dir)
+    train_set = utils.dataset_from_list(args.data_dir,args.list_file)
     nrof_classes = len(train_set)
     print('nrof_classes: ',nrof_classes)
     image_list, label_list = utils.get_image_paths_and_labels(train_set)
+    print('total images: ',len(image_list))
     image_list = np.array(image_list)
     label_list = np.array(label_list,dtype=np.int32)
 
@@ -123,7 +125,10 @@ def main(args):
         if debug:
             image = tf.cast(image,tf.float32)
         else:
-            image = tf.image.per_image_standardization(image)
+            image = tf.cast(image,tf.float32)
+            image = tf.subtract(image,127.5)
+            image = tf.div(image,128.)
+            #image = tf.image.per_image_standardization(image)
         return image, label
 
     
@@ -194,11 +199,13 @@ def main(args):
                         #    phase_train=phase_train_placeholder, bottleneck_layer_size=args.embedding_size, 
                         #    weight_decay=args.weight_decay, reuse=reuse)
                         if args.network ==  'sphere_network':
-                            prelogits = network.infer(batch_image_split[i])
+                            prelogits = network.infer(batch_image_split[i],args.embedding_size)
+                            print(prelogits)
                         elif args.network == 'resface':
-                            prelogits, _ = resface.inference(batch_image_split[i],1.0,weight_decay=args.weight_decay,reuse=reuse)
+                            prelogits, _ = resface.inference(batch_image_split[i],1.0,bottleneck_layer_size=args.embedding_size,weight_decay=args.weight_decay,reuse=reuse)
                         elif args.network == 'inception_net':
                             prelogits, endpoints = inception_net.inference(batch_image_split[i],1,phase_train=True,bottleneck_layer_size=args.embedding_size,weight_decay=args.weight_decay,reuse=reuse)
+                            print(prelogits)
 
                         elif args.network == 'resnet_v2':
                             with slim.arg_scope(resnet_v2.resnet_arg_scope(args.weight_decay)):
@@ -226,9 +233,15 @@ def main(args):
                             label_reshape = tf.reshape(batch_label_split[i],[single_batch_size])
                             label_reshape = tf.cast(label_reshape,tf.int64)
                             coco_loss = utils.cos_loss(prelogits,label_reshape, len(train_set),reuse,alpha=args.alpha,scale=args.scale)
-                            #regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
-                            #reg_loss  = args.weight_decay*tf.add_n(regularization_losses)
-                            reg_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+                            #scatter_loss, _ = facenet.coco_loss(prelogits,label_reshape, len(train_set),reuse,alpha=args.alpha,scale=args.scale)
+                            #coco_loss = scatter_loss['loss_total']
+                            regularization_losses = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
+                            if args.network == 'sphere_network':
+                                print('reg loss using weight_decay * tf.add_n')
+                                reg_loss  = args.weight_decay*tf.add_n(regularization_losses)
+                            else:
+                                print('reg loss using tf.add_n')
+                                reg_loss = tf.get_collection(tf.GraphKeys.REGULARIZATION_LOSSES)
                             loss = coco_loss + reg_loss
                             
                             tower_losses.append(loss)
@@ -375,6 +388,8 @@ def parse_arguments(argv):
     parser.add_argument('--data_dir', type=str,
         help='Path to the data directory containing aligned face patches. Multiple directories are separated with colon.',
         default='~/datasets/casia/casia_maxpy_mtcnnalign_182_160')
+    parser.add_argument('--list_file', type=str,
+        help='Image list file')
     parser.add_argument('--model_def', type=str,
         help='Model definition. Points to a module containing the definition of the inference graph.', default='models.inception_resnet_v1')
     parser.add_argument('--max_nrof_epochs', type=int,

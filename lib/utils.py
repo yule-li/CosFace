@@ -104,12 +104,12 @@ def cos_loss(x, y,  num_cls, reuse=False, alpha=0.25, scale=64,name = 'cos_loss'
     #implemented by py_func
     #value = tf.identity(xw)
     #substract the marigin and scale it
-    #value = coco_func(xw_norm,y,alpha) * scale
+    value = coco_func(xw_norm,y,alpha) * scale
 
     #implemented by tf api
-    margin_xw_norm = xw_norm - alpha
-    label_onehot = tf.one_hot(y,num_cls)
-    value = scale*tf.where(tf.equal(label_onehot,1), margin_xw_norm, xw_norm)
+    #margin_xw_norm = xw_norm - alpha
+    #label_onehot = tf.one_hot(y,num_cls)
+    #value = scale*tf.where(tf.equal(label_onehot,1), margin_xw_norm, xw_norm)
 
     
     # compute the loss as softmax loss
@@ -572,6 +572,28 @@ def get_dataset(paths, has_class_directories=True):
             dataset.append(ImageClass(class_name, image_paths))
   
     return dataset
+def dataset_from_list(data_dir,list_file):
+    dataset = []
+    lines = open(list_file,'r').read().strip().split('\n')
+    path_exp = os.path.expanduser(data_dir)
+    count = 1
+    class_paths = {}
+    for line in lines:
+        image_path, _ = line.split(' ')
+        class_name, _ = image_path.split('/')
+        if class_name not in class_paths:
+            class_paths[class_name] = []
+        full_image_path = os.path.join(path_exp,image_path)
+        assert os.path.exists(full_image_path), 'file {} not exist'.format(full_image_path)
+        class_paths[class_name].append(full_image_path)
+    dataset = []
+    keys = class_paths.keys()
+    keys.sort()
+    for key in keys:
+        dataset.append(ImageClass(key,class_paths[key]))
+    return dataset
+
+        
 
 
 def get_image_paths(facedir):
