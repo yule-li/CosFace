@@ -1,5 +1,5 @@
 ## Recent Update
-```2018.07.04```: I achieved a better accuracy(99.2%) on LFW. I did some modification as bellow:
+```2018.07.04```: I achieved a better accuracy(99.2%,[trained model](https://pan.baidu.com/s/1c7bPoM_hGvkzp5Tunu_ivg)) on LFW. I did some modification as bellow:
 - Align webface and lfw dataset to ```112x112``` using [insightface align method](https://github.com/deepinsight/insightface/blob/master/src/align/align_lfw.py)
 - Set a bigger margin parameter (```0.35```) and a higher feature embedding demension (```1024```)
 - Use the clean dataset and the details can be seen [this](https://github.com/happynear/FaceVerification/issues/30)
