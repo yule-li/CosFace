@@ -36,10 +36,6 @@ def main(args):
             # Get the paths for the corresponding images
             paths, actual_issame = lfw.get_paths(os.path.expanduser(args.lfw_dir), pairs, args.lfw_file_ext)
 
-            # Load the model
-            #facenet.load_model(args.model)
-            
-            # Get input and output tensors
 
             
             #image_size = images_placeholder.get_shape()[1]  # For some reason this doesn't work for frozen graphs
@@ -58,8 +54,9 @@ def main(args):
                     prelogits = tf.squeeze(prelogits,[1,2],name='SpatialSqueeze')
      
             elif args.network_type == 'sphere_network':
-                prelogits = network.infer(images_placeholder)
+                prelogits = network.infer(images_placeholder,args.embedding_size)
                 if args.fc_bn:
+                    print('do batch norm after network')
                     prelogits = slim.batch_norm(prelogits, is_training=phase_train_placeholder,epsilon=1e-5, scale=True,scope='softmax_bn')
     
 
@@ -91,11 +88,11 @@ def main(args):
                 paths_batch = paths[start_index:end_index]
                 #images = facenet.load_data(paths_batch, False, False, image_size,True,image_size)
                 #images = facenet.load_data2(paths_batch, False, False, args.image_height,args.image_width,True,)
-                images = utils.load_data(paths_batch, False, True, args.image_height,args.image_width,True,(args.image_height,args.image_width))
+                images = utils.load_data(paths_batch, False, False, args.image_height,args.image_width,args.prewhiten,(args.image_height,args.image_width))
                 feed_dict = { images_placeholder:images, phase_train_placeholder:False }
                 feats = sess.run(embeddings, feed_dict=feed_dict)
                 if args.do_flip:
-                    images_flip = utils.load_data(paths_batch, False, True, args.image_height,args.image_width,True,(args.image_height,args.image_width))
+                    images_flip = utils.load_data(paths_batch, False, True, args.image_height,args.image_width,args.prewhiten,(args.image_height,args.image_width))
                     feed_dict = { images_placeholder:images_flip, phase_train_placeholder:False }
                     feats_flip = sess.run(embeddings, feed_dict=feed_dict)
                     feats = np.concatenate((feats,feats_flip),axis=1)
@@ -129,12 +126,16 @@ def parse_arguments(argv):
         help='Network structure.',default='resnet50')
     parser.add_argument('--fc_bn', 
         help='wheather bn is followed by fc layer.',default=False,action='store_true')
+    parser.add_argument('--prewhiten', 
+        help='wheather do prewhiten to preprocess image.',default=False,action='store_true')
     parser.add_argument('--save_model', type=bool,
         help='whether save model to disk.',default=False)
     parser.add_argument('--do_flip', type=bool,
         help='wheather flip is used in test.',default=False)
     parser.add_argument('--lfw_batch_size', type=int,
         help='Number of images to process in a batch in the LFW test set.', default=200)
+    parser.add_argument('--embedding_size', type=int,
+        help='Feature embedding size.', default=512)
     parser.add_argument('model', type=str, 
         help='Could be either a directory containing the meta_file and ckpt_file or a model protobuf (.pb) file')
     parser.add_argument('--image_size', type=int,

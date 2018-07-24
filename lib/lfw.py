@@ -33,7 +33,7 @@ import utils
 
 def evaluate(embeddings, actual_issame, nrof_folds=10):
     # Calculate evaluation metrics
-    thresholds = np.arange(0, 4, 0.01)
+    thresholds = np.arange(0, 4, 0.01/4)
     embeddings1 = embeddings[0::2]
     embeddings2 = embeddings[1::2]
     tpr, fpr, accuracy = utils.calculate_roc(thresholds, embeddings1, embeddings2,

@@ -418,6 +418,10 @@ def load_data(image_paths, do_random_crop, do_flip, image_height,image_width, do
             img = to_rgb(img)
         if do_prewhiten:
             img = prewhiten(img)
+        else:
+            img = img - 127.5
+            img = img / 128.
+
         #img = crop(img, do_random_crop, image_size)
         #img = flip(img, do_random_flip)
         if do_flip:
