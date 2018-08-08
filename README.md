@@ -16,7 +16,7 @@ If you want to preprocess the dataset by yourself, you can refer to [sphereface]
 ```./train.sh``` 
 
 ## Test
-Modify the ```MODEL_DIR``` in ```test.sh``` and run ```./test/sh```.
+Modify the ```MODEL_DIR``` in ```test.sh``` and run ```./test.sh```.
 
 If you do not want to train your model, you can download my [trained model](https://pan.baidu.com/s/1ouQA2PXz1hp7Uz_uhsyMdw) and unzip it to ```models``` dir.
 
